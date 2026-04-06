@@ -1,0 +1,74 @@
+#!/usr/bin/env zsh
+# Claude Code account switcher
+# Usage:
+#   cc-account save <name>    - save current credentials as a named profile
+#   cc-account use <name>     - switch to a saved profile
+#   cc-account list           - list saved profiles
+#   cc-account rm <name>      - remove a profile
+#   cc-account current        - show current account info
+
+CRED=~/.claude/.credentials.json
+PROFILES=~/.claude/profiles
+
+[[ -d $PROFILES ]] || mkdir -p $PROFILES
+
+case $1 in
+  save)
+    [[ -z $2 ]] && { echo "Usage: cc-account save <name>"; exit 1; }
+    [[ -f $CRED ]] || { echo "No credentials found"; exit 1; }
+    cp $CRED $PROFILES/$2.json
+    echo "Saved profile: $2"
+    ;;
+  use)
+    [[ -z $2 ]] && { echo "Usage: cc-account use <name>"; exit 1; }
+    [[ -f $PROFILES/$2.json ]] || { echo "Profile '$2' not found"; exit 1; }
+    cp $PROFILES/$2.json $CRED
+    tier=$(jq -r '.claudeAiOauth.rateLimitTier // empty' $PROFILES/$2.json 2>/dev/null)
+    label=${tier##*_claude_}
+    [[ $label == $tier ]] && label=$(jq -r '.claudeAiOauth.subscriptionType // "api-key"' $PROFILES/$2.json 2>/dev/null)
+    echo "Switched to: $2 ($label)"
+    echo "  ↳ restart CC session to apply"
+    ;;
+  list)
+    for f in $PROFILES/*.json(N); do
+      name=${f:t:r}
+      sub=$(jq -r '.claudeAiOauth.subscriptionType // "api-key"' $f 2>/dev/null)
+      tier=$(jq -r '.claudeAiOauth.rateLimitTier // "unknown"' $f 2>/dev/null)
+      expires=$(jq -r '.claudeAiOauth.expiresAt // empty' $f 2>/dev/null)
+      # extract multiplier from tier like "default_claude_max_5x" -> "max_5x"
+      label=${tier##*_claude_}
+      [[ $label == $tier ]] && label=$sub
+      [[ -n $expires ]] && exp_date=$(date -d @$((expires/1000)) '+%Y-%m-%d' 2>/dev/null)
+      printf "  %-12s %s" "$name" "$label"
+      [[ -n $exp_date ]] && printf "  (expires $exp_date)"
+      printf "\n"
+    done
+    local files=($PROFILES/*.json(N))
+    (( ${#files} == 0 )) && echo "  (no profiles saved)"
+    ;;
+  rm)
+    [[ -z $2 ]] && { echo "Usage: cc-account rm <name>"; exit 1; }
+    [[ -f $PROFILES/$2.json ]] || { echo "Profile '$2' not found"; exit 1; }
+    rm $PROFILES/$2.json
+    echo "Removed profile: $2"
+    ;;
+  current)
+    [[ -f $CRED ]] || { echo "Not logged in"; exit 1; }
+    sub=$(jq -r '.claudeAiOauth.subscriptionType // "api-key"' $CRED 2>/dev/null)
+    tier=$(jq -r '.claudeAiOauth.rateLimitTier // "unknown"' $CRED 2>/dev/null)
+    expires=$(jq -r '.claudeAiOauth.expiresAt // empty' $CRED 2>/dev/null)
+    [[ -n $expires ]] && exp_date=$(date -d @$((expires/1000)) '+%Y-%m-%d %H:%M')
+    echo "Subscription: $sub"
+    echo "Rate limit:   $tier"
+    [[ -n $exp_date ]] && echo "Token expires: $exp_date"
+    ;;
+  *)
+    echo "cc-account - Claude Code account switcher"
+    echo "  save <name>   Save current credentials"
+    echo "  use <name>    Switch to saved profile"
+    echo "  list          List profiles"
+    echo "  rm <name>     Remove a profile"
+    echo "  current       Show current account"
+    ;;
+esac
+exit 0

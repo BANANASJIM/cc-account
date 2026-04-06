@@ -39,6 +39,10 @@ cc-account use max20x             # switch anytime
 - Credential switch uses atomic `mktemp` + `mv` to prevent corruption on interruption
 - Profiles stored with original file permissions in `~/.claude/profiles/`
 
+## Contributing
+
+Issues and PRs welcome. Keep it simple — this is a single-file tool by design.
+
 ## License
 
 MIT
